@@ -16,11 +16,54 @@ schema_get_files_info = types.FunctionDeclaration(
         },
     ),
 )
-schema_get_file_content = types.FunctionDeclaration(name="get_file_content")
+
+schema_get_file_content = types.FunctionDeclaration(
+    name="get_file_content",
+    description="Lists files in the specified directory along with their sizes, constrained to the working directory.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "directory": types.Schema(
+                type=types.Type.STRING,
+                description="The directory to list files from, relative to the working directory. If not provided, lists files in the working directory itself.",
+            ),
+        },
+    ),
+)
+
+schema_write_file = types.FunctionDeclaration(
+    name="write_file",
+    description="Lists files in the specified directory along with their sizes, constrained to the working directory.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "directory": types.Schema(
+                type=types.Type.STRING,
+                description="The directory to list files from, relative to the working directory. If not provided, lists files in the working directory itself.",
+            ),
+        },
+    ),
+)
+
+schema_run_python_file = types.FunctionDeclaration(
+    name="run_python_file",
+    description="Lists files in the specified directory along with their sizes, constrained to the working directory.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "directory": types.Schema(
+                type=types.Type.STRING,
+                description="The directory to list files from, relative to the working directory. If not provided, lists files in the working directory itself.",
+            ),
+        },
+    ),
+)
+
     
 available_functions = types.Tool(
     function_declarations=[
-        schema_get_files_info,
+        schema_get_files_info, 
+        schema_write_file, schema_run_python_file,schema_get_file_content
     ]
 )
 
@@ -63,6 +106,7 @@ def get_files_info(working_directory, directory="."):
         return "\n".join(results_line)
     except Exception as e:
         return f"Error: {str(e)}"
+
 def get_file_content(working_directory, file_path):
     combined = os.path.join(working_directory,file_path)
     if not os.path.abspath(combined).startswith(os.path.abspath(working_directory)):
@@ -120,4 +164,28 @@ def run_python_file(working_directory, file_path, args=[]):
         return output 
     except Exception as e:
         return f"Error: executing Python file: {e}"
-
+def call_function(function_call_part, verbose=False):
+    function_call_part = types.FunctionCall()
+    if verbose == True: 
+        print(f"calling function {function_call_part.name}({function_call_part.args})")
+    print(f" - Calling function: {function_call_part.name} ")
+    function_name = { "function":["get_files_info","get_file_content","write_file","run_python_file"]}
+    some_args = {"working_directory":"./calculator"}
+    if function_call_part.name == "get_files_info":
+        get_files_info(**some_args)
+    if function_call_part.name == "get_file_content":
+        get_file_content(**some_args)
+    if function_call_part.name == "write_file":
+        write_file(**some_args)
+    if function_call_part.name == "run_python_file":
+        run_python_file(**some_args)
+    if function_call_part.name:
+        return types.Content(
+            role="tool",
+            parts=[
+                types.Part.from_function_response(
+                    name=function_name, 
+                    response={"error": f"Unknown function: {function_name}"}
+                )
+            ]
+        ) 
