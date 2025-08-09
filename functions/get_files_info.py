@@ -19,43 +19,55 @@ schema_get_files_info = types.FunctionDeclaration(
 
 schema_get_file_content = types.FunctionDeclaration(
     name="get_file_content",
-    description="Lists files in the specified directory along with their sizes, constrained to the working directory.",
+    description="Reads and returns the content of a specified file, constrained to the working directory.",
     parameters=types.Schema(
         type=types.Type.OBJECT,
         properties={
             "directory": types.Schema(
                 type=types.Type.STRING,
-                description="The directory to list files from, relative to the working directory. If not provided, lists files in the working directory itself.",
+                description="The file path to read from, relative to the working directory.",
             ),
         },
+        required=["directory"],  # Make it required
     ),
 )
 
 schema_write_file = types.FunctionDeclaration(
     name="write_file",
-    description="Lists files in the specified directory along with their sizes, constrained to the working directory.",
+    description="Writes content to a file in the specified path, constrained to the working directory.",
     parameters=types.Schema(
         type=types.Type.OBJECT,
         properties={
             "directory": types.Schema(
                 type=types.Type.STRING,
-                description="The directory to list files from, relative to the working directory. If not provided, lists files in the working directory itself.",
+                description="The file path to write to, relative to the working directory.",
+            ),
+            "content": types.Schema(
+                type=types.Type.STRING,
+                description="The content to write to the file.",
             ),
         },
+        required=["directory", "content"],  # Both parameters are required
     ),
 )
 
 schema_run_python_file = types.FunctionDeclaration(
     name="run_python_file",
-    description="Lists files in the specified directory along with their sizes, constrained to the working directory.",
+    description="Executes a Python file in the specified working directory.",
     parameters=types.Schema(
         type=types.Type.OBJECT,
         properties={
             "directory": types.Schema(
                 type=types.Type.STRING,
-                description="The directory to list files from, relative to the working directory. If not provided, lists files in the working directory itself.",
+                description="The Python file path to execute, relative to the working directory.",
+            ),
+            "args": types.Schema(
+                type=types.Type.ARRAY,
+                items=types.Schema(type=types.Type.STRING),
+                description="Optional command line arguments to pass to the Python script.",
             ),
         },
+        required=["directory"],  # Only file path is required, args are optional
     ),
 )
 
@@ -121,7 +133,7 @@ def get_file_content(working_directory, file_path):
             if one_more:
                 file_content += f'[...File "{file_path}" truncated at 10000 characters]'
             return file_content
-
+    
     except Exception as e:
         return f"Error: {str(e)}"
 def write_file(working_directory, file_path, content):
@@ -165,27 +177,57 @@ def run_python_file(working_directory, file_path, args=[]):
     except Exception as e:
         return f"Error: executing Python file: {e}"
 def call_function(function_call_part, verbose=False):
-    function_call_part = types.FunctionCall()
-    if verbose == True: 
-        print(f"calling function {function_call_part.name}({function_call_part.args})")
-    print(f" - Calling function: {function_call_part.name} ")
-    function_name = { "function":["get_files_info","get_file_content","write_file","run_python_file"]}
-    some_args = {"working_directory":"./calculator"}
+    function_map = {
+        "get_files_info": get_files_info,
+        "get_file_content" : get_file_content,
+        "write_file": write_file, 
+        "run_python_file": run_python_file
+    }
+    # Fix arguments for each function
+    fixed_args = function_call_part.args.copy()
+
     if function_call_part.name == "get_files_info":
-        get_files_info(**some_args)
-    if function_call_part.name == "get_file_content":
-        get_file_content(**some_args)
-    if function_call_part.name == "write_file":
-        write_file(**some_args)
-    if function_call_part.name == "run_python_file":
-        run_python_file(**some_args)
-    if function_call_part.name:
+    # This function actually expects 'directory' - don't change it
+        pass
+
+    elif function_call_part.name in ["get_file_content", "write_file", "run_python_file"]:
+        # These functions expect 'file_path' but LLM provides 'directory'
+        if 'directory' in fixed_args:
+            fixed_args['file_path'] = fixed_args.pop('directory')
+
+    # Remove any remaining 'directory' key (shouldn't be needed now)
+    if 'directory' in fixed_args:
+        fixed_args.pop('directory')
+
+    combined_args = {**{"working_directory": "./calculator"}, **fixed_args}
+    
+    if verbose == True: 
+        print(f"Calling function: {function_call_part.name}({function_call_part.args})")
+    else: 
+        print(f" - Calling function: {function_call_part.name}")
+        
+    if function_call_part.name not in function_map: 
         return types.Content(
             role="tool",
             parts=[
                 types.Part.from_function_response(
-                    name=function_name, 
-                    response={"error": f"Unknown function: {function_name}"}
+                    name=function_call_part.name,
+                    response={"error": f"Unknown function: {function_call_part.name}"},
                 )
-            ]
-        ) 
+            ],
+        )
+    
+    # Use the combined_args you already created - don't recreate them!
+    func = function_map[function_call_part.name]
+    function_result = func(**combined_args)  # Use the fixed combined_args
+
+    return types.Content(
+        role="tool",
+        parts=[
+            types.Part.from_function_response(
+                name=function_call_part.name,
+                response={"result": function_result},
+            )
+        ],
+    )
+    
